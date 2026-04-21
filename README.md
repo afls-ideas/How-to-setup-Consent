@@ -514,3 +514,21 @@ All of these objects must be accessible to the user for the full consent flow to
 | `ContactPointAddress` | Addresses for Direct Mail channel | Read |
 | `ContactPointSocial` | Social handles for WhatsApp channel | Read |
 | `CommSubscriptionConsent` | Actual consent records | Read/Write |
+
+---
+
+## Troubleshooting: Accept Button is Greyed Out After Signing
+
+### Symptom
+
+You've selected channels, checked the acknowledgement box, and signed — but the **Accept** button remains greyed out.
+
+### Root Cause: The Lock Icon
+
+The consent screen has a **lock icon** (next to Accept) as a safeguard against accidental submissions. This is by design.
+
+### How to Fix
+
+1. Tap the **lock icon** to unlock the form
+2. The **Accept** button becomes active
+3. Tap **Accept** to submit the consent
