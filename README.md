@@ -20,7 +20,7 @@
 | Subscription | Linked DataUsePurpose |
 |-------------|----------------------|
 | Immunexis | Immunexis |
-| Oncuvia | Oncuvia |
+| Cordim | Cordim |
 | Rheumatology Clinical Research | Rheumatology Clinical Research |
 
 ### Channel-to-Subscription Mapping (CommSubscriptionChannelType)
@@ -30,7 +30,7 @@ Every subscription is linked to all 4 channels:
 | Subscription | Direct Mail | Email | Mobile - SMS | WhatsApp |
 |-------------|:-----------:|:-----:|:------------:|:--------:|
 | Immunexis | X | X | X | X |
-| Oncuvia | X | X | X | X |
+| Cordim | X | X | X | X |
 | Rheumatology Clinical Research | X | X | X | X |
 
 ### Existing Consent Records (CommSubscriptionConsent)
@@ -125,7 +125,7 @@ erDiagram
 
 ```mermaid
 flowchart TD
-    DUP[DataUsePurpose<br/><i>e.g. Immunexis, Oncuvia</i>]
+    DUP[DataUsePurpose<br/><i>e.g. Immunexis, Cordim</i>]
     CS[CommSubscription<br/><i>consent topic</i>]
     ECT[EngagementChannelType<br/><i>Email, SMS, WhatsApp, Direct Mail</i>]
     CSCT[CommSubscriptionChannelType<br/><i>junction: which channels per subscription</i>]
@@ -289,13 +289,13 @@ WHERE EngagementChannelType.Name = 'WhatsApp'
 
 ## How to Remove a Channel from a Specific Subscription
 
-To remove WhatsApp from the "Oncuvia" subscription but keep it for others:
+To remove WhatsApp from the "Cordim" subscription but keep it for others:
 
 ```apex
 // Find and delete the junction record
 CommSubscriptionChannelType[] toDelete = [
     SELECT Id FROM CommSubscriptionChannelType
-    WHERE CommunicationSubscription.Name = 'Oncuvia'
+    WHERE CommunicationSubscription.Name = 'Cordim'
     AND EngagementChannelType.Name = 'WhatsApp'
 ];
 delete toDelete;
@@ -532,3 +532,51 @@ The consent screen has a **lock icon** (next to Accept) as a safeguard against a
 1. Tap the **lock icon** to unlock the form
 2. The **Accept** button becomes active
 3. Tap **Accept** to submit the consent
+
+---
+
+## How to Remove a Channel for a Specific User (via Sharing)
+
+To hide a channel (e.g., WhatsApp) from a specific user while keeping it visible to others, remove their share records on **two objects**:
+
+### Objects to Unshare
+
+| Object | What to Remove | Why |
+|---|---|---|
+| `EngagementChannelTypeShare` | The share for the WhatsApp channel record | Hides the channel from the user's picker |
+| `CommSubscriptionChannelTypeShare` | The shares for every subscription-to-WhatsApp junction | Prevents the junction records from syncing to the device |
+
+### Steps
+
+**1. Find the EngagementChannelType share:**
+
+```sql
+SELECT Id, Parent.Name
+FROM EngagementChannelTypeShare
+WHERE UserOrGroupId = '<UserId>'
+    AND Parent.Name = 'WhatsApp'
+```
+
+**2. Find the CommSubscriptionChannelType shares:**
+
+```sql
+SELECT Id, Parent.Name
+FROM CommSubscriptionChannelTypeShare
+WHERE UserOrGroupId = '<UserId>'
+    AND Parent.EngagementChannelTypeId = '<WhatsAppChannelId>'
+```
+
+**3. Delete all matched share records.**
+
+### Example
+
+For a user with 3 subscriptions (Immunexis, Cordim, Rheumatology Clinical Research), removing WhatsApp requires deleting **4 share records**:
+
+| Share Object | Record Name |
+|---|---|
+| `CommSubscriptionChannelTypeShare` | Immunexis WhatsApp |
+| `CommSubscriptionChannelTypeShare` | Cordim WhatsApp |
+| `CommSubscriptionChannelTypeShare` | Rheumatology WhatsApp |
+| `EngagementChannelTypeShare` | WhatsApp |
+
+After the user re-syncs, WhatsApp no longer appears on the consent screen. The other channels (Email, Direct Mail, Mobile - SMS) remain unaffected.
