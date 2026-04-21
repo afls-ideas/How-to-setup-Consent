@@ -4,7 +4,7 @@
 
 ---
 
-## Current State (260-pm Org)
+## Current State (Example Org)
 
 ### Engagement Channel Types (the channels available for consent)
 
