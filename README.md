@@ -429,3 +429,88 @@ Expected result — only system/admin profiles:
 | Analytics Cloud Security User | True |
 
 Field-facing profiles (Field Sales Representative, Key Account Manager) and their permission sets should **not** appear in this list.
+
+---
+
+## Troubleshooting: Channels Appear but Dropdowns Show "No values available"
+
+### Symptom
+
+The consent screen shows the correct channels (Email, Direct Mail, Mobile - SMS, WhatsApp) but every dropdown says **"No values available"**.
+
+### Root Cause: No Contact Point Records on the Account
+
+The channel dropdowns are **pickers, not editors**. They display existing Contact Point records linked to the account. Each channel type maps to a specific Contact Point object:
+
+| Channel (EngagementChannelType) | ContactPointType | Dropdown Pulls From |
+|---|---|---|
+| Email | Email | `ContactPointEmail` records on the account |
+| Direct Mail | MailingAddress | `ContactPointAddress` records on the account |
+| Mobile - SMS | Phone | `ContactPointPhone` records on the account |
+| WhatsApp | Social | `ContactPointSocial` records on the account |
+
+If the account has no `ContactPointEmail` records, the Email dropdown will be empty. You **cannot add contact point values from the consent screen** — they must exist first.
+
+### How to Diagnose
+
+Check whether the account has Contact Point records:
+
+```sql
+-- Replace the AccountId with the actual account
+SELECT Id, EmailAddress, ParentId FROM ContactPointEmail WHERE ParentId = '<AccountId>'
+SELECT Id, TelephoneNumber, ParentId FROM ContactPointPhone WHERE ParentId = '<AccountId>'
+SELECT Id, Name, ParentId FROM ContactPointAddress WHERE ParentId = '<AccountId>'
+```
+
+### How to Fix
+
+Create Contact Point records on the account before capturing consent:
+
+```apex
+// Create an email contact point
+ContactPointEmail cpe = new ContactPointEmail();
+cpe.ParentId = accountId;
+cpe.EmailAddress = 'doctor@hospital.com';
+cpe.IsPrimary = true;
+insert cpe;
+
+// Create a phone contact point
+ContactPointPhone cpp = new ContactPointPhone();
+cpp.ParentId = accountId;
+cpp.TelephoneNumber = '+1-555-0100';
+cpp.IsPrimary = true;
+insert cpp;
+
+// Create a mailing address contact point
+ContactPointAddress cpa = new ContactPointAddress();
+cpa.ParentId = accountId;
+cpa.Name = 'Office Address';
+cpa.Street = '123 Main St';
+cpa.City = 'Boston';
+cpa.State = 'MA';
+cpa.PostalCode = '02101';
+cpa.Country = 'US';
+insert cpa;
+```
+
+### Important Notes
+
+- Contact Points are linked to the **Account** (via `ParentId`), not to the Contact or Individual
+- The consent screen reads Contact Points from the account selected in the "Account" field at the top of the consent form
+- If sharing is Private on Contact Point objects, ensure the user has access to the Contact Point records too
+- After creating Contact Points, the user must re-sync the mobile device for the values to appear
+
+### Sharing Checklist for a Working Consent Screen
+
+All of these objects must be accessible to the user for the full consent flow to work:
+
+| Object | Purpose | Required Access |
+|---|---|---|
+| `CommSubscription` | Consent topics | Read |
+| `EngagementChannelType` | Available channels | Read |
+| `CommSubscriptionChannelType` | Which channels per subscription | Read |
+| `ContactPointEmail` | Email addresses for Email channel | Read |
+| `ContactPointPhone` | Phone numbers for SMS channel | Read |
+| `ContactPointAddress` | Addresses for Direct Mail channel | Read |
+| `ContactPointSocial` | Social handles for WhatsApp channel | Read |
+| `CommSubscriptionConsent` | Actual consent records | Read/Write |
