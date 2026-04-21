@@ -323,3 +323,109 @@ This removes the channel option but does **not** delete any existing consent rec
 - The sharing model works because OWD=Private + Sharing Rules = country-specific visibility
 - `CommSubscriptionChannelType` (the junction) inherits visibility from its parent objects — if a user can't see the `EngagementChannelType`, they can't see the junction
 - `CommSubscriptionConsent` (actual consent records) also has a Share object, so consent records themselves can be restricted too
+
+---
+
+## Troubleshooting: OWD is Private but Users Can See All Channels
+
+### Symptom
+
+You set `EngagementChannelType` OWD to **Private**, but all users can still see every channel (Email, WhatsApp, SMS, Direct Mail, etc.).
+
+### Root Cause: "View All Records" on Profiles or Permission Sets
+
+Even with OWD = Private, the **View All Records** (and **Modify All Records**) object permission **completely bypasses sharing rules**. If a profile or permission set grants View All on `EngagementChannelType`, that user sees every record regardless of OWD, sharing rules, or manual shares.
+
+### How to Diagnose
+
+Run this SOQL query to find every profile and permission set with View All:
+
+```sql
+SELECT
+    Parent.Label,
+    Parent.IsOwnedByProfile,
+    Parent.Profile.Name,
+    PermissionsViewAllRecords,
+    PermissionsModifyAllRecords
+FROM ObjectPermissions
+WHERE SobjectType = 'EngagementChannelType'
+    AND (PermissionsViewAllRecords = true OR PermissionsModifyAllRecords = true)
+ORDER BY Parent.Label
+```
+
+### What to Look For
+
+Common offenders that ship with View All enabled:
+
+| Profile / Permission Set | Typically Has View All? | Should You Remove It? |
+|---|---|---|
+| System Administrator | Yes | No — admins need full access |
+| **Field Sales Representative** | Yes | **Yes — remove for sharing rules to work** |
+| **Key Account Manager** | Yes | **Yes — remove for sharing rules to work** |
+| **Custom Life Sciences Commercial User** (PermSet) | Yes | **Yes — remove for sharing rules to work** |
+| Cloned Admin | Yes | No — admin clone |
+| Analytics Cloud Integration/Security User | Yes | No — system integration profiles |
+
+### How to Fix
+
+You must remove View All from **three related objects** in dependency order. Salesforce enforces dependencies — you cannot remove View All from a parent object while a child object still has it.
+
+**Order of removal (child → parent):**
+
+1. `CommSubscriptionConsent` — remove View All / Modify All
+2. `CommSubscriptionChannelType` — remove View All / Modify All
+3. `EngagementChannelType` — remove View All / Modify All
+
+**Via Setup UI:**
+
+1. Go to **Setup > Profiles > [Profile Name]**
+2. Click **Object Settings** (or use Enhanced Profile UI)
+3. For each of the 3 objects above (in order), uncheck **View All** and **Modify All**
+4. Save
+
+**Via SOQL + API (programmatic):**
+
+```sql
+-- Find the ObjectPermissions record IDs
+SELECT Id, ParentId, Parent.Profile.Name, SobjectType,
+       PermissionsViewAllRecords, PermissionsModifyAllRecords
+FROM ObjectPermissions
+WHERE SobjectType IN ('CommSubscriptionConsent',
+                      'CommSubscriptionChannelType',
+                      'EngagementChannelType')
+    AND (PermissionsViewAllRecords = true OR PermissionsModifyAllRecords = true)
+    AND Parent.Profile.Name = 'Field Sales Representative'
+```
+
+Then update each record:
+
+```bash
+sf data update record -s ObjectPermissions -i <RecordId> \
+    -v "PermissionsViewAllRecords=false PermissionsModifyAllRecords=false" \
+    -o <your-org>
+```
+
+### After Fixing
+
+Verify that only admin profiles retain View All:
+
+```sql
+SELECT Parent.Profile.Name, Parent.Label, PermissionsViewAllRecords
+FROM ObjectPermissions
+WHERE SobjectType = 'EngagementChannelType'
+    AND PermissionsViewAllRecords = true
+ORDER BY Parent.Label
+```
+
+Expected result — only system/admin profiles:
+
+| Profile | View All |
+|---------|----------|
+| System Administrator | True |
+| System Administrator Cache Gen | True |
+| System Administrator Cloned | True |
+| Cloned Admin | True |
+| Analytics Cloud Integration User | True |
+| Analytics Cloud Security User | True |
+
+Field-facing profiles (Field Sales Representative, Key Account Manager) and their permission sets should **not** appear in this list.
