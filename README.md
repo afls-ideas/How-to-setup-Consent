@@ -580,3 +580,68 @@ For a user with 3 subscriptions (Immunexis, Cordim, Rheumatology Clinical Resear
 | `EngagementChannelTypeShare` | WhatsApp |
 
 After the user re-syncs, WhatsApp no longer appears on the consent screen. The other channels (Email, Direct Mail, Mobile - SMS) remain unaffected.
+
+---
+
+## Data Change Management (DCM) and Consent Contact Points
+
+### Overview
+
+All four Contact Point objects used by the consent screen can be placed under DCM control:
+
+| Object | DCM Managed Fields |
+|---|---|
+| `ContactPointAddress` | `Address` (compound), `AddressType` |
+| `ContactPointEmail` | *(check your org's configuration)* |
+| `ContactPointPhone` | *(check your org's configuration)* |
+| `ContactPointSocial` | *(check your org's configuration)* |
+
+When a DCM persona definition is set to `DoNotApplyChangesImmediately` for a profile (e.g., Field Sales Representative), changes to managed fields create a **Data Change Request (DCR)** instead of updating the record directly. An admin must approve the DCR before the change takes effect.
+
+### Known Limitation: Compound vs Individual Address Fields
+
+DCM for `ContactPointAddress` can only manage the **compound `Address` field** — you cannot add individual address components (`Street`, `City`, `State`, `PostalCode`, `Country`) as separate managed fields. Attempting to do so will result in an error.
+
+**The gap:** If a field rep updates individual address fields (e.g., changes just `Street` or `City`) rather than the compound `Address` field, **DCM will not intercept the change**. The update goes through immediately with no DCR created.
+
+This means:
+- Updates via the compound `Address` field → DCR created, requires approval
+- Updates to `Street`, `City`, `Country`, etc. individually → **applied immediately, no DCR**
+
+### How to Diagnose Missing DCRs
+
+If you expect a DCR but don't see one:
+
+**1. Check which fields are managed:**
+
+```sql
+SELECT FieldApiName, ShouldApplyChngImmediately
+FROM LifeSciDataChgDefMngFld
+WHERE LifeSciDataChgDefId = '<ContactPointAddress DCM Def Id>'
+```
+
+**2. Check if the user's profile has a persona definition:**
+
+```sql
+SELECT ProfileId, ChangeUpdateType, IsActive
+FROM LifeSciDataChgPersonaDef
+WHERE IsActive = true
+```
+
+Only profiles listed here with `DoNotApplyChangesImmediately` will trigger DCRs.
+
+**3. Check if the record was updated directly (no DCR):**
+
+```sql
+SELECT Id, Name, Street, City, LastModifiedDate, LastModifiedBy.Name
+FROM ContactPointAddress
+WHERE Id = '<RecordId>'
+```
+
+If `LastModifiedBy` is the field rep and no corresponding DCR exists, the change bypassed DCM because it was made to a non-managed field.
+
+### Impact on Consent
+
+- Contact Point values shown in the consent screen dropdowns reflect the **current record state**
+- If a field rep changes an address and it bypasses DCM, that new address appears in the consent dropdown immediately on next sync
+- If the change goes through DCM, the old address remains in the dropdown until the DCR is approved
