@@ -640,8 +640,62 @@ WHERE Id = '<RecordId>'
 
 If `LastModifiedBy` is the field rep and no corresponding DCR exists, the change bypassed DCM because it was made to a non-managed field.
 
+### What Happens When a DCR is Created (Compound Address Field)
+
+When a field rep (e.g., Field Sales Representative profile with `DoNotApplyChangesImmediately`) updates the compound `Address` field on a ContactPointAddress record:
+
+1. **The change is NOT applied to the record.** The original values remain intact.
+2. **A `LifeSciDataChangeRequest` record is created** with status `NotProcessed`.
+3. The DCR captures both old and new values in the `DataChangeInformation` field as JSON:
+
+```json
+{
+  "oldData": {
+    "id": "8lWHs000001WGqBMAW",
+    "parentid": "001Hs00005uBkMvIAK",
+    "street": "123 Market St, San Francisco, CA 94102",
+    "postalcode": "94102"
+  },
+  "newData": {
+    "id": "8lWHs000001WGqBMAW",
+    "parentid": "001Hs00005uBkMvIAK",
+    "street": "123 Market Street",
+    "postalcode": "94105"
+  }
+}
+```
+
+4. **An admin must approve the DCR** to apply the change to the actual record.
+
+### DCR Lifecycle
+
+```mermaid
+flowchart LR
+    A[Field Rep updates<br/>compound Address field] --> B[DCM intercepts]
+    B --> C[DCR created<br/>Status: NotProcessed]
+    C --> D{Admin reviews}
+    D -->|Approve| E[Change applied<br/>to record]
+    D -->|Reject| F[Change discarded<br/>record unchanged]
+    
+    style C fill:#fbb,stroke:#333
+    style E fill:#bfb,stroke:#333
+    style F fill:#fcc,stroke:#333
+```
+
+### How to Query DCRs for Contact Point Changes
+
+```sql
+SELECT Id, Name, Status, OperationType,
+       DataChangeRecordIdentifier, DataChangeInformation,
+       CreatedDate, CreatedBy.Name, LifeSciDataChgDefId
+FROM LifeSciDataChangeRequest
+WHERE LifeSciDataChgDefId = '<ContactPointAddress DCM Def Id>'
+ORDER BY CreatedDate DESC
+```
+
 ### Impact on Consent
 
 - Contact Point values shown in the consent screen dropdowns reflect the **current record state**
-- If a field rep changes an address and it bypasses DCM, that new address appears in the consent dropdown immediately on next sync
-- If the change goes through DCM, the old address remains in the dropdown until the DCR is approved
+- If a field rep changes an address and it bypasses DCM (individual fields), that new address appears in the consent dropdown immediately on next sync
+- If the change goes through DCM (compound Address field), the **old address remains** in the consent dropdown until an admin approves the DCR
+- The field rep sees no error — the update appears to succeed from their perspective, but the record is unchanged until approval
